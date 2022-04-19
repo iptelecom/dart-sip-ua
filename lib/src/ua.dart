@@ -1,6 +1,7 @@
 import 'dart:async';
 
-import 'package:sip_ua/src/data.dart';
+import 'data.dart';
+import 'subscriber.dart';
 import 'config.dart' as config;
 import 'config.dart';
 import 'constants.dart' as DartSIP_C;
@@ -11,6 +12,7 @@ import 'event_manager/internal_events.dart';
 import 'exceptions.dart' as Exceptions;
 import 'logger.dart';
 import 'message.dart';
+import 'options.dart';
 import 'parser.dart' as Parser;
 import 'registrator.dart';
 import 'rtc_session.dart';
@@ -91,8 +93,8 @@ class UA extends EventManager {
     _dynConfiguration = DynamicSettings();
     _dialogs = <String, Dialog>{};
 
-    // User actions outside any session/dialog (MESSAGE).
-    _applicants = <Message>{};
+    // User actions outside any session/dialog (MESSAGE/OPTIONS).
+    _applicants = <Applicant>{};
 
     _sessions = <String?, RTCSession>{};
     _transport = null;
@@ -122,13 +124,16 @@ class UA extends EventManager {
 
     // Initialize registrator.
     _registrator = Registrator(this);
+
+    _subscribers = <String?, Subscriber>{};
   }
 
+  late Map<String?, Subscriber> _subscribers;
   Map<String, dynamic>? _cache;
   Settings? _configuration;
   DynamicSettings? _dynConfiguration;
   late Map<String, Dialog> _dialogs;
-  late Set<Message> _applicants;
+  late Set<Applicant> _applicants;
   Map<String?, RTCSession> _sessions = <String?, RTCSession>{};
   Transport? _transport;
   Contact? _contact;
@@ -205,6 +210,25 @@ class UA extends EventManager {
     _registrator.unregister(all);
   }
 
+  /** 
+   * Create subscriber instance
+   */
+  Subscriber subscribe(
+    String target,
+    String eventName,
+    String accept, [
+    int expires = 900,
+    String? contentType,
+    String? allowEvents,
+    Map<String, dynamic> requestParams = const <String, dynamic>{},
+    List<String> extraHeaders = const <String>[],
+  ]) {
+    logger.debug('subscribe()');
+
+    return Subscriber(this, target, eventName, accept, expires, contentType,
+        allowEvents, requestParams, extraHeaders);
+  }
+
   /**
    * Get the Registrator instance.
    */
@@ -261,6 +285,24 @@ class UA extends EventManager {
   }
 
   /**
+   * Send a Options.
+   *
+   * -param {String} target
+   * -param {String} body
+   * -param {Object} [options]
+   *
+   * -throws {TypeError}
+   *
+   */
+  Options sendOptions(
+      String target, String body, Map<String, dynamic>? options) {
+    logger.debug('sendOptions()');
+    Options message = Options(this);
+    message.send(target, body, options);
+    return message;
+  }
+
+  /**
    * Terminate ongoing sessions.
    */
   void terminateSessions(Map<String, Object> options) {
@@ -309,10 +351,23 @@ class UA extends EventManager {
       }
     });
 
+    // Run _terminate on ever subscription
+    _subscribers.forEach((String? key, _) {
+      if (_subscribers.containsKey(key)) {
+        logger.debug('closing subscription $key');
+        try {
+          Subscriber subscriber = _subscribers[key]!;
+          subscriber.terminate(null);
+        } catch (error, s) {
+          Log.e(error.toString(), null, s);
+        }
+      }
+    });
+
     // Run  _close_ on every applicant.
-    for (Message message in _applicants) {
+    for (Applicant applicant in _applicants) {
       try {
-        message.close();
+        applicant.close();
       } catch (error) {}
     }
 
@@ -419,6 +474,20 @@ class UA extends EventManager {
   }
 
   /**
+   * Subscriber
+   */
+  void newSubscriber({required Subscriber sub}) {
+    _subscribers[sub.id] = sub;
+  }
+
+  /**
+   * Subscriber destroyed.
+   */
+  void destroySubscriber(Subscriber sub) {
+    _subscribers.remove(sub.id);
+  }
+
+  /**
    * Dialog
    */
   void newDialog(Dialog dialog) {
@@ -442,9 +511,25 @@ class UA extends EventManager {
   }
 
   /**
+   *  Options
+   */
+  void newOptions(Options message, String originator, dynamic request) {
+    _applicants.add(message);
+    emit(EventNewOptions(
+        message: message, originator: originator, request: request));
+  }
+
+  /**
    *  Message destroyed.
    */
   void destroyMessage(Message message) {
+    _applicants.remove(message);
+  }
+
+  /**
+   *  Options destroyed.
+   */
+  void destroyOptions(Options message) {
     _applicants.remove(message);
   }
 
@@ -549,7 +634,13 @@ class UA extends EventManager {
      * They are processed as if they had been received outside the dialog.
      */
     if (method == SipMethod.OPTIONS) {
-      request.reply(200);
+      if (!hasListeners(EventNewOptions())) {
+        request.reply(200);
+        return;
+      }
+      Options message = Options(this);
+      message.init_incoming(request);
+      return;
     } else if (method == SipMethod.MESSAGE) {
       if (!hasListeners(EventNewMessage())) {
         request.reply(405);
@@ -561,6 +652,12 @@ class UA extends EventManager {
     } else if (method == SipMethod.INVITE) {
       // Initial INVITE.
       if (request.to_tag != null && !hasListeners(EventNewRTCSession())) {
+        request.reply(405);
+
+        return;
+      }
+    } else if (method == SipMethod.SUBSCRIBE) {
+      if (listeners['newSubscribe']?.length == 0) {
         request.reply(405);
 
         return;
@@ -581,7 +678,7 @@ class UA extends EventManager {
               dialog = _findDialog(
                   replaces.call_id, replaces.from_tag!, replaces.to_tag!);
               if (dialog != null) {
-                session = dialog.owner;
+                session = dialog.owner as RTCSession?;
                 if (!session!.isEnded()) {
                   session.receiveRequest(request);
                 } else {
@@ -623,6 +720,9 @@ class UA extends EventManager {
           emit(EventSipEvent(request: request));
           request.reply(200);
           break;
+        case SipMethod.SUBSCRIBE:
+          emit(EventOnNewSubscribe(request: request));
+          break;
         default:
           request.reply(405);
           break;
@@ -636,10 +736,10 @@ class UA extends EventManager {
       if (dialog != null) {
         dialog.receiveRequest(request);
       } else if (method == SipMethod.NOTIFY) {
-        session =
-            _findSession(request.call_id!, request.from_tag, request.to_tag);
-        if (session != null) {
-          session.receiveRequest(request);
+        Subscriber? sub = _findSubscriber(
+            request.call_id!, request.from_tag!, request.to_tag!);
+        if (sub != null) {
+          sub.receiveRequest(request);
         } else {
           logger
               .debug('received NOTIFY request for a non existent subscription');
@@ -661,6 +761,13 @@ class UA extends EventManager {
   // ============
   // Utils.
   // ============
+
+  Subscriber? _findSubscriber(String call_id, String from_tag, String to_tag) {
+    String id = call_id;
+    Subscriber? sub = _subscribers[id];
+
+    return sub;
+  }
 
   /**
    * Get the session to which the request belongs to, if any.
@@ -883,4 +990,8 @@ class UA extends EventManager {
       }
     }
   }
+}
+
+mixin Applicant {
+  void close();
 }
