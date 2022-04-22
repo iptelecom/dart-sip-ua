@@ -217,13 +217,13 @@ class UA extends EventManager {
     String target,
     String eventName,
     String accept, [
-    int expires = 900,
+    int expires = 1000,
     String? contentType,
     String? allowEvents,
     Map<String, dynamic> requestParams = const <String, dynamic>{},
     List<String> extraHeaders = const <String>[],
   ]) {
-    logger.debug('subscribe()');
+    logger.debug('Create Subscriber class');
 
     return Subscriber(this, target, eventName, accept, expires, contentType,
         allowEvents, requestParams, extraHeaders);
@@ -730,23 +730,17 @@ class UA extends EventManager {
     }
     // In-dialog request.
     else {
-      dialog =
-          _findDialog(request.call_id!, request.from_tag!, request.to_tag!);
+      dialog = _findDialog(request.call_id!, request.from_tag!, request.to_tag!);
+      Subscriber? sub = _findSubscriber(request.call_id!, request.from_tag!, request.to_tag!);
 
-      if (dialog != null) {
+      if(sub != null) {
+        sub.receiveRequest(request);
+      } else if(dialog != null) {
         dialog.receiveRequest(request);
-      } else if (method == SipMethod.NOTIFY) {
-        Subscriber? sub = _findSubscriber(
-            request.call_id!, request.from_tag!, request.to_tag!);
-        if (sub != null) {
-          sub.receiveRequest(request);
-        } else {
-          logger
-              .debug('received NOTIFY request for a non existent subscription');
-          request.reply(481, 'Subscription does not exist');
-        }
+      } else if(method == SipMethod.NOTIFY) {
+        logger.debug('received NOTIFY request for a non existent subscription');
+        request.reply(481, 'Subscription does not exist');
       }
-
       /* RFC3261 12.2.2
        * Request with to tag, but no matching dialog found.
        * Exception: ACK for an Invite request for which a dialog has not

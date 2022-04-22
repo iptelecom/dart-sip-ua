@@ -78,12 +78,11 @@ class Subscriber extends EventManager implements Owner {
   UA ua;
 
   Subscriber(this.ua, this._target, String eventName, String accept,
-      [int expires = 900,
+      [int expires = 1000,
       String? contentType,
       String? allowEvents,
       Map<String, dynamic> requestParams = const <String, dynamic>{},
       List<String> extraHeaders = const <String>[]]) {
-    logger.debug('new');
 
     _expires = expires;
 
@@ -398,7 +397,7 @@ class Subscriber extends EventManager implements Owner {
 
         // RFC 6665 3.1.1 subscribe OK response must contain Expires header.
         // Use workaround expires value.
-        expires_value = '900';
+        expires_value = '1000';
       }
 
       int? expires = parseInt(expires_value!, 10);
@@ -519,13 +518,7 @@ class Subscriber extends EventManager implements Owner {
 
     RequestSender request_sender = RequestSender(ua, request, manager);
 
-    request_sender.send();
-
-    var s = _dialog!.sendRequest(SipMethod.SUBSCRIBE, <String, dynamic>{
-      'body': body,
-      'extraHeaders': headers,
-      'eventHandlers': manager,
-    });
+     request_sender.send();
   }
 
   int _stateStringToNumber(String? strState) {
