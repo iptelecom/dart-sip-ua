@@ -197,8 +197,8 @@ class RTCSession extends EventManager {
 
   RTCPeerConnection? get connection => _connection;
 
-  RTCDTMFSender get dtmfSender =>
-      _connection!.createDtmfSender(_localMediaStream!.getAudioTracks()[0]);
+  Future<RTCDTMFSender> get dtmfSender async =>
+      await _connection!.getSenders().then((List<RTCRtpSender> senders) => senders[0].dtmfSender);
 
   String? get contact => _contact;
 
@@ -964,7 +964,7 @@ class RTCSession extends EventManager {
 
           options!['eventHandlers'] = handlers;
 
-          dtmf.send(tone, options);
+          await dtmf.send(tone, options);
           await Future<void>.delayed(
               Duration(milliseconds: duration + interToneGap), () {});
         });
