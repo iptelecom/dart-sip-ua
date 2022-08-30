@@ -154,6 +154,7 @@ class _MyCallScreenWidget extends State<CallScreenWidget>
   void registrationStateChanged(RegistrationState state) {}
 
   void _cleanUp() {
+    if(_localStream == null) return;
     _localStream?.getTracks().forEach((track) {
       track.stop();
     });
@@ -205,7 +206,7 @@ class _MyCallScreenWidget extends State<CallScreenWidget>
   }
 
   void _handleHangup() {
-    call!.hangup();
+    call!.hangup({'status_code': 603});
     _timer.cancel();
   }
 
@@ -580,5 +581,10 @@ class _MyCallScreenWidget extends State<CallScreenWidget>
   @override
   void onNewMessage(SIPMessageRequest msg) {
     // NO OP
+  }
+
+  @override
+  void onNewNotify(Notify ntf) {
+    // TODO: implement onNewNotify
   }
 }

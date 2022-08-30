@@ -64,7 +64,7 @@ class RFC4028Timers {
   Timer? timer;
 }
 
-class RTCSession extends EventManager {
+class RTCSession extends EventManager implements Owner {
   RTCSession(UA? ua) {
     logger.debug('new');
 
@@ -197,8 +197,13 @@ class RTCSession extends EventManager {
 
   RTCPeerConnection? get connection => _connection;
 
-  RTCDTMFSender get dtmfSender =>
-      _connection!.createDtmfSender(_localMediaStream!.getAudioTracks()[0]);
+  @override
+  int get TerminatedCode => C.STATUS_TERMINATED;
+
+  // RTCDTMFSender get dtmfSender =>
+  //     _connection!.createDtmfSender(_localMediaStream!.getAudioTracks()[0]);
+  Future<RTCDTMFSender> get dtmfSender async =>
+      await _connection!.getSenders().then((List<RTCRtpSender> senders) => senders[0].dtmfSender);
 
   String? get contact => _contact;
 
@@ -964,7 +969,7 @@ class RTCSession extends EventManager {
 
           options!['eventHandlers'] = handlers;
 
-          dtmf.send(tone, options);
+          await dtmf.send(tone, options);
           await Future<void>.delayed(
               Duration(milliseconds: duration + interToneGap), () {});
         });
@@ -1641,7 +1646,7 @@ class RTCSession extends EventManager {
   Future<RTCSessionDescription> _createLocalDescription(
       String type, Map<String, dynamic>? constraints) async {
     logger.debug('createLocalDescription()');
-    _iceGatheringState = RTCIceGatheringState.RTCIceGatheringStateNew;
+    _iceGatheringState ??= RTCIceGatheringState.RTCIceGatheringStateNew;
     Completer<RTCSessionDescription> completer =
         Completer<RTCSessionDescription>();
 
@@ -2849,8 +2854,8 @@ class RTCSession extends EventManager {
 
     String session_expires_refresher;
 
-    if ((response.session_expires != null &&
-        response.session_expires != 0 && response.session_expires != null) &&
+    if (response.session_expires != null &&
+        response.session_expires != 0 &&
         response.session_expires >= DartSIP_C.MIN_SESSION_EXPIRES) {
       _sessionTimers.currentExpires = response.session_expires;
       session_expires_refresher = response.session_expires_refresher ?? 'uac';
