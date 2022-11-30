@@ -39,51 +39,13 @@ class C {
 }
 
 class Subscriber extends EventManager implements Owner {
-  String? _id;
-
-  final String _target;
-
-  late int _expires;
-
-  String? _contentType;
-
-  late Map<String, dynamic> _params;
-
-  late int _state;
-
-  late Dialog? _dialog;
-
-  DateTime? _expires_timestamp;
-
-  Timer? _expires_timer;
-
-  late bool _terminated;
-
-  Timer? _unsubscribe_timeout_timer;
-
-  late Map<String, dynamic> _data;
-
-  late String _event_name;
-
-  num? _event_id;
-
-  late List<dynamic> _headers;
-
-  late List<Map<String, dynamic>> _queue;
-
-  @override
-  late Function(IncomingRequest p1) receiveRequest;
-
-  @override
-  UA ua;
-
   Subscriber(this.ua, this._target, String eventName, String accept,
       [int expires = 900,
       String? contentType,
       String? allowEvents,
       Map<String, dynamic> requestParams = const <String, dynamic>{},
       List<String> extraHeaders = const <String>[]]) {
-    logger.debug('new');
+    logger.d('new');
 
     _expires = expires;
 
@@ -149,14 +111,51 @@ class Subscriber extends EventManager implements Owner {
     // To enqueue subscribes created before receive initial subscribe OK.
     _queue = <Map<String, dynamic>>[];
   }
+  String? _id;
+
+  final String _target;
+
+  late int _expires;
+
+  String? _contentType;
+
+  late Map<String, dynamic> _params;
+
+  late int _state;
+
+  late Dialog? _dialog;
+
+  DateTime? _expires_timestamp;
+
+  Timer? _expires_timer;
+
+  late bool _terminated;
+
+  Timer? _unsubscribe_timeout_timer;
+
+  late Map<String, dynamic> _data;
+
+  late String _event_name;
+
+  num? _event_id;
+
+  late List<dynamic> _headers;
+
+  late List<Map<String, dynamic>> _queue;
+
+  @override
+  late Function(IncomingRequest p1) receiveRequest;
+
+  @override
+  UA ua;
   String? get id => _id;
 
+  @override
   int? get status => _state;
 
   @override
   int get TerminatedCode => C.STATE_TERMINATED;
 
-  @override
   void onRequestTimeout() {
     _dialogTerminated(C.SUBSCRIBE_RESPONSE_TIMEOUT);
   }
@@ -165,7 +164,6 @@ class Subscriber extends EventManager implements Owner {
    * User API
    */
 
-  @override
   void onTransportError() {
     _dialogTerminated(C.SUBSCRIBE_TRANSPORT_ERROR);
   }
@@ -175,7 +173,7 @@ class Subscriber extends EventManager implements Owner {
    */
   void receiveNotifyRequest(IncomingRequest request) {
     if (request.method != SipMethod.NOTIFY) {
-      logger.warn('received non-NOTIFY request');
+      logger.w('received non-NOTIFY request');
       request.reply(405);
 
       return;
@@ -185,7 +183,7 @@ class Subscriber extends EventManager implements Owner {
     dynamic eventHeader = request.parseHeader('Event');
 
     if (eventHeader == null) {
-      logger.warn('missed Event header');
+      logger.w('missed Event header');
       request.reply(400);
       _dialogTerminated(C.RECEIVE_BAD_NOTIFY);
 
@@ -196,7 +194,7 @@ class Subscriber extends EventManager implements Owner {
     num? eventId = eventHeader.params['id'];
 
     if (eventName != _event_name || eventId != _event_id) {
-      logger.warn('Event header does not match SUBSCRIBE');
+      logger.w('Event header does not match SUBSCRIBE');
       request.reply(489);
       _dialogTerminated(C.RECEIVE_BAD_NOTIFY);
 
@@ -207,7 +205,7 @@ class Subscriber extends EventManager implements Owner {
     dynamic subsState = request.parseHeader('subscription-state');
 
     if (subsState == null) {
-      logger.warn('missed Subscription-State header');
+      logger.w('missed Subscription-State header');
       request.reply(400);
       _dialogTerminated(C.RECEIVE_BAD_NOTIFY);
 
@@ -231,7 +229,7 @@ class Subscriber extends EventManager implements Owner {
         // Expiration time is shorter and the difference is not too small.
         if (_expires_timestamp!.difference(expiresTimestamp) >
             Duration(milliseconds: maxTimeDeviation)) {
-          logger.debug('update sending re-SUBSCRIBE time');
+          logger.d('update sending re-SUBSCRIBE time');
 
           _scheduleSubscribe(expires);
         }
@@ -239,10 +237,10 @@ class Subscriber extends EventManager implements Owner {
     }
 
     if (prevState != C.STATE_PENDING && newState == C.STATE_PENDING) {
-      logger.debug('emit "pending"');
+      logger.d('emit "pending"');
       emit(EventPending());
     } else if (prevState != C.STATE_ACTIVE && newState == C.STATE_ACTIVE) {
-      logger.debug('emit "active"');
+      logger.d('emit "active"');
       emit(EventActive());
     }
 
@@ -255,7 +253,7 @@ class Subscriber extends EventManager implements Owner {
     if (body != null) {
       dynamic contentType = request.getHeader('content-type');
 
-      logger.debug('emit "notify"');
+      logger.d('emit "notify"');
       emit(EventNotify(
           isFinal: isFinal,
           request: request,
@@ -280,7 +278,7 @@ class Subscriber extends EventManager implements Owner {
    * @param {string} body - subscribe request body.
    */
   void subscribe([String? target, String? body]) {
-    logger.debug('subscribe()');
+    logger.d('subscribe()');
 
     if (_state == C.STATE_INIT) {
       _sendInitialSubscribe(body, _headers);
@@ -295,7 +293,7 @@ class Subscriber extends EventManager implements Owner {
    * @param {string} body - un-subscribe request body
    */
   void terminate(String? body) {
-    logger.debug('terminate()');
+    logger.d('terminate()');
 
     // Prevent duplication un-subscribe sending.
     if (_terminated) {
@@ -337,11 +335,11 @@ class Subscriber extends EventManager implements Owner {
     clearTimeout(_unsubscribe_timeout_timer);
 
     if (_dialog != null) {
-      _dialog!.terminate();
+      _dialog?.terminate();
       _dialog = null;
     }
 
-    logger.debug('emit "terminated" code=$terminationCode');
+    logger.d('emit "terminated" code=$terminationCode');
     emit(EventTerminated(
         TerminationCode: terminationCode,
         reason: reason,
@@ -357,7 +355,7 @@ class Subscriber extends EventManager implements Owner {
       throw ArgumentError('Incoming response was null');
     }
 
-    if (response.status_code >= 200 && response.status_code! < 300) {
+    if (response.status_code >= 200 && response.status_code < 300) {
       // Create dialog
       if (_dialog == null) {
         _id = response.call_id!;
@@ -365,24 +363,24 @@ class Subscriber extends EventManager implements Owner {
           Dialog dialog = Dialog(this, response, 'UAC');
           _dialog = dialog;
         } catch (e) {
-          logger.warn(e.toString());
+          logger.w(e.toString());
           _dialogTerminated(C.SUBSCRIBE_BAD_OK_RESPONSE);
 
           return;
         }
 
-        logger.debug('emit "accepted"');
+        logger.d('emit "accepted"');
         emit(EventAccepted());
 
         // Subsequent subscribes saved in the queue until dialog created.
         for (Map<String, dynamic> sub in _queue) {
-          logger.debug('dequeue subscribe');
+          logger.d('dequeue subscribe');
 
           _sendSubsequentSubscribe(sub['body'], sub['headers']);
         }
       } else {
         ua.destroySubscriber(this);
-        _id = response.call_id!;
+        _id = response.call_id;
         ua.newSubscriber(sub: this);
       }
 
@@ -394,7 +392,7 @@ class Subscriber extends EventManager implements Owner {
       if (expires_value != null &&
           expires_value == '' &&
           expires_value == '0') {
-        logger.warn('response without Expires header');
+        logger.w('response without Expires header');
 
         // RFC 6665 3.1.1 subscribe OK response must contain Expires header.
         // Use workaround expires value.
@@ -403,7 +401,7 @@ class Subscriber extends EventManager implements Owner {
 
       int? expires = parseInt(expires_value!, 10);
 
-      if (expires! > 0) {
+      if (expires != null && expires > 0) {
         _scheduleSubscribe(expires);
       }
     } else if (response.status_code == 401 || response.status_code == 407) {
@@ -432,7 +430,7 @@ class Subscriber extends EventManager implements Owner {
 
     _expires_timestamp = DateTime.now().add(Duration(seconds: expires));
 
-    logger.debug('next SUBSCRIBE will be sent in $timeout sec');
+    logger.d('next SUBSCRIBE will be sent in $timeout sec');
 
     clearTimeout(_expires_timer);
 
@@ -485,7 +483,7 @@ class Subscriber extends EventManager implements Owner {
     }
 
     if (_dialog == null) {
-      logger.debug('enqueue subscribe');
+      logger.d('enqueue subscribe');
 
       _queue.add(<String, dynamic>{'body': body, 'headers': headers.slice(0)});
 
@@ -501,7 +499,7 @@ class Subscriber extends EventManager implements Owner {
       headers.add('Content-Type: $_contentType');
     }
 
-    var manager = EventManager();
+    EventManager manager = EventManager();
     manager.on(EventOnReceiveResponse(), (EventOnReceiveResponse response) {
       _receiveSubscribeResponse(response.response);
     });
@@ -521,7 +519,7 @@ class Subscriber extends EventManager implements Owner {
 
     request_sender.send();
 
-    var s = _dialog!.sendRequest(SipMethod.SUBSCRIBE, <String, dynamic>{
+    _dialog?.sendRequest(SipMethod.SUBSCRIBE, <String, dynamic>{
       'body': body,
       'extraHeaders': headers,
       'eventHandlers': manager,
@@ -554,7 +552,7 @@ class Subscriber extends EventManager implements Owner {
 }
 
 class SubscriptionId {
+  SubscriptionId(this.target, this.event);
   String target;
   String event;
-  SubscriptionId(this.target, this.event);
 }
