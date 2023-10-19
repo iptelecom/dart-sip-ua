@@ -426,6 +426,8 @@ class Call {
   String? get id => _id;
   RTCPeerConnection? get peerConnection => _session.connection;
   RTCSession get session => _session;
+  String? get fromTag => session.from_tag;
+  String? get kazooId => id?.replaceAll(fromTag ?? '', '');
   CallStateEnum state;
 
   void answer(Map<String, dynamic> options, {MediaStream? mediaStream = null}) {
