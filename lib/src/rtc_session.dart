@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:sdp_transform/sdp_transform.dart' as sdp_transform;
+import 'package:sdp_transform/sdp_transform.dart';
 
 import 'package:sip_ua/sip_ua.dart';
 import 'constants.dart' as DartSIP_C;
@@ -88,7 +91,9 @@ class RTCSession extends EventManager implements Owner {
   final Map<String?, Dialog> _earlyDialogs = <String?, Dialog>{};
   String? _contact;
   String? _from_tag;
+  String? get from_tag => _from_tag;
   String? _to_tag;
+  String? get to_tag => _to_tag;
 
   String? get from_tag => _from_tag;
   String? get to_tag => _to_tag;
@@ -365,7 +370,15 @@ class RTCSession extends EventManager implements Owner {
 
     // Get the Expires header value if exists.
     if (request.hasHeader('expires')) {
-      expires = request.getHeader('expires') * 1000;
+      try {
+        expires = (request.getHeader('expires') is num
+                ? request.getHeader('expires')
+                : num.tryParse(request.getHeader('expires'))!) *
+            1000;
+      } catch (e) {
+        logger.e(
+            'Invalid Expires header value: ${request.getHeader('expires')}, error $e');
+      }
     }
 
     /* Set the to_tag before
@@ -687,7 +700,8 @@ class RTCSession extends EventManager implements Owner {
       if (_status == C.STATUS_TERMINATED) {
         return;
       }
-      logger.e('Failed to answer(): ${error.toString()}', error, s);
+      logger.e('Failed to answer(): ${error.toString()}',
+          error: error, stackTrace: s);
     }
   }
 
@@ -1945,27 +1959,28 @@ class RTCSession extends EventManager implements Owner {
   }
 
   Future<RTCSessionDescription> _processInDialogSdpOffer(
-      dynamic request) async {
+      IncomingRequest request) async {
     logger.d('_processInDialogSdpOffer()');
 
-    Map<String, dynamic> sdp = request.parseSDP();
+    Map<String, dynamic>? sdp = request.parseSDP();
 
     bool hold = false;
+    if (sdp != null) {
+      for (Map<String, dynamic> m in sdp['media']) {
+        if (holdMediaTypes.indexOf(m['type']) == -1) {
+          continue;
+        }
 
-    for (Map<String, dynamic> m in sdp['media']) {
-      if (holdMediaTypes.indexOf(m['type']) == -1) {
-        continue;
-      }
+        String direction = m['direction'] ?? sdp['direction'] ?? 'sendrecv';
 
-      String direction = m['direction'] ?? sdp['direction'] ?? 'sendrecv';
-
-      if (direction == 'sendonly' || direction == 'inactive') {
-        hold = true;
-      }
-      // If at least one of the streams is active don't emit 'hold'.
-      else {
-        hold = false;
-        break;
+        if (direction == 'sendonly' || direction == 'inactive') {
+          hold = true;
+        }
+        // If at least one of the streams is active don't emit 'hold'.
+        else {
+          hold = false;
+          break;
+        }
       }
     }
 
@@ -2288,7 +2303,7 @@ class RTCSession extends EventManager implements Owner {
 
       request_sender.send();
     } catch (error, s) {
-      logger.e(error.toString(), null, s);
+      logger.e(error.toString(), error: error, stackTrace: s);
       _failed('local', null, null, null, 500, DartSIP_C.CausesType.WEBRTC_ERROR,
           'Can\'t create local SDP');
       if (_status == C.STATUS_TERMINATED) {
@@ -2366,7 +2381,7 @@ class RTCSession extends EventManager implements Owner {
       }
 
       _status = C.STATUS_1XX_RECEIVED;
-      _progress('remote', response);
+      _progress('remote', response, int.parse(status_code));
 
       if (response.body == null || response.body!.isEmpty) {
         return;
@@ -2554,7 +2569,7 @@ class RTCSession extends EventManager implements Owner {
         'eventHandlers': handlers
       });
     } catch (e, s) {
-      logger.e(e.toString(), null, s);
+      logger.e(e.toString(), error: e, stackTrace: s);
       onFailed();
     }
   }
@@ -2921,11 +2936,17 @@ class RTCSession extends EventManager implements Owner {
     emit(EventCallConnecting(session: this, request: request));
   }
 
-  void _progress(String originator, dynamic response) {
+  void _progress(String originator, dynamic response, [int? status_code]) {
     logger.d('session progress');
     logger.d('emit "progress"');
+
+    ErrorCause errorCause = ErrorCause(status_code: status_code);
+
     emit(EventCallProgress(
-        session: this, originator: originator, response: response));
+        session: this,
+        originator: originator,
+        response: response,
+        cause: errorCause));
   }
 
   void _accepted(String originator, [dynamic message]) {

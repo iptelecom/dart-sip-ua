@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sip_ua/sip_ua.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class RegisterWidget extends StatefulWidget {
   final SIPUAHelper? _helper;
+
   RegisterWidget(this._helper, {Key? key}) : super(key: key);
+
   @override
-  _MyRegisterWidget createState() => _MyRegisterWidget();
+  State<RegisterWidget> createState() => _MyRegisterWidget();
 }
 
 class _MyRegisterWidget extends State<RegisterWidget>
     implements SipUaHelperListener {
   final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _portController = TextEditingController();
   final TextEditingController _wsUriController = TextEditingController();
   final TextEditingController _sipUriController = TextEditingController();
   final TextEditingController _displayNameController = TextEditingController();
@@ -24,18 +28,33 @@ class _MyRegisterWidget extends State<RegisterWidget>
   late SharedPreferences _preferences;
   late RegistrationState _registerState;
 
+  TransportType _selectedTransport = TransportType.TCP;
+
   SIPUAHelper? get helper => widget._helper;
 
   @override
-  initState() {
+  void initState() {
     super.initState();
     _registerState = helper!.registerState;
     helper!.addSipUaHelperListener(this);
     _loadSettings();
+    if (kIsWeb) {
+      _selectedTransport = TransportType.WS;
+    }
   }
 
   @override
-  deactivate() {
+  void dispose() {
+    _passwordController.dispose();
+    _wsUriController.dispose();
+    _sipUriController.dispose();
+    _displayNameController.dispose();
+    _authorizationUserController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void deactivate() {
     super.deactivate();
     helper!.removeSipUaHelperListener(this);
     _saveSettings();
@@ -44,6 +63,7 @@ class _MyRegisterWidget extends State<RegisterWidget>
   void _loadSettings() async {
     _preferences = await SharedPreferences.getInstance();
     setState(() {
+      _portController.text = '5060';
       _wsUriController.text =
           _preferences.getString('ws_uri') ?? 'wss://tryit.jssip.net:10443';
       _sipUriController.text =
@@ -57,6 +77,7 @@ class _MyRegisterWidget extends State<RegisterWidget>
   }
 
   void _saveSettings() {
+    _preferences.setString('port', _portController.text);
     _preferences.setString('ws_uri', _wsUriController.text);
     _preferences.setString('sip_uri', _sipUriController.text);
     _preferences.setString('display_name', _displayNameController.text);
@@ -101,17 +122,21 @@ class _MyRegisterWidget extends State<RegisterWidget>
 
     UaSettings settings = UaSettings();
 
-    settings.webSocketUrl = _wsUriController.text;
+    settings.port = _portController.text;
     settings.webSocketSettings.extraHeaders = _wsExtraHeaders;
     settings.webSocketSettings.allowBadCertificate = true;
     //settings.webSocketSettings.userAgent = 'Dart/2.8 (dart:io) for OpenSIPS.';
-
+    settings.tcpSocketSettings.allowBadCertificate = true;
+    settings.transportType = _selectedTransport;
     settings.uri = _sipUriController.text;
+    settings.webSocketUrl = _wsUriController.text;
+    settings.host = _sipUriController.text.split('@')[1];
     settings.authorizationUser = _authorizationUserController.text;
     settings.password = _passwordController.text;
     settings.displayName = _displayNameController.text;
     settings.userAgent = 'Dart SIP Client v1.0.0';
     settings.dtmfMode = DtmfMode.RFC2833;
+    settings.contact_uri = 'sip:${_sipUriController.text}';
 
     helper!.start(settings);
   }
@@ -119,167 +144,107 @@ class _MyRegisterWidget extends State<RegisterWidget>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        appBar: AppBar(
-          title: Text("SIP Account"),
-        ),
-        body: Align(
-            alignment: Alignment(0, 0),
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                mainAxisAlignment: MainAxisAlignment.start,
-                children: <Widget>[
-                  Column(
-                    children: <Widget>[
-                      Padding(
-                        padding:
-                            const EdgeInsets.fromLTRB(48.0, 18.0, 48.0, 18.0),
-                        child: Center(
-                            child: Text(
-                          'Register Status: ${EnumHelper.getName(_registerState.state)}',
-                          style: TextStyle(fontSize: 18, color: Colors.black54),
-                        )),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(48.0, 18.0, 48.0, 0),
-                        child: Align(
-                          child: Text('WebSocket:'),
-                          alignment: Alignment.centerLeft,
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(48.0, 0.0, 48.0, 0),
-                        child: TextFormField(
-                          controller: _wsUriController,
-                          keyboardType: TextInputType.text,
-                          textAlign: TextAlign.center,
-                          decoration: InputDecoration(
-                            contentPadding: EdgeInsets.all(10.0),
-                            border: UnderlineInputBorder(
-                                borderSide: BorderSide(color: Colors.black12)),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  Column(
-                    children: <Widget>[
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(46.0, 18.0, 48.0, 0),
-                        child: Align(
-                          child: Text('SIP URI:'),
-                          alignment: Alignment.centerLeft,
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(48.0, 0.0, 48.0, 0),
-                        child: TextFormField(
-                          controller: _sipUriController,
-                          keyboardType: TextInputType.text,
-                          textAlign: TextAlign.center,
-                          decoration: InputDecoration(
-                            contentPadding: EdgeInsets.all(10.0),
-                            border: UnderlineInputBorder(
-                                borderSide: BorderSide(color: Colors.black12)),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  Column(
-                    children: <Widget>[
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(46.0, 18.0, 48.0, 0),
-                        child: Align(
-                          child: Text('Authorization User:'),
-                          alignment: Alignment.centerLeft,
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(48.0, 0.0, 48.0, 0),
-                        child: TextFormField(
-                          controller: _authorizationUserController,
-                          keyboardType: TextInputType.text,
-                          textAlign: TextAlign.center,
-                          decoration: InputDecoration(
-                            contentPadding: EdgeInsets.all(10.0),
-                            border: UnderlineInputBorder(
-                                borderSide: BorderSide(color: Colors.black12)),
-                            hintText: _authorizationUserController.text.isEmpty
-                                ? '[Empty]'
-                                : null,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  Column(
-                    children: <Widget>[
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(46.0, 18.0, 48.0, 0),
-                        child: Align(
-                          child: Text('Password:'),
-                          alignment: Alignment.centerLeft,
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(48.0, 0.0, 48.0, 0),
-                        child: TextFormField(
-                          controller: _passwordController,
-                          keyboardType: TextInputType.text,
-                          textAlign: TextAlign.center,
-                          decoration: InputDecoration(
-                            contentPadding: EdgeInsets.all(10.0),
-                            border: UnderlineInputBorder(
-                                borderSide: BorderSide(color: Colors.black12)),
-                            hintText: _passwordController.text.isEmpty
-                                ? '[Empty]'
-                                : null,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  Column(
-                    children: <Widget>[
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(46.0, 18.0, 48.0, 0),
-                        child: Align(
-                          child: Text('Display Name:'),
-                          alignment: Alignment.centerLeft,
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(48.0, 0.0, 48.0, 0),
-                        child: TextFormField(
-                          controller: _displayNameController,
-                          keyboardType: TextInputType.text,
-                          textAlign: TextAlign.center,
-                          decoration: InputDecoration(
-                            contentPadding: EdgeInsets.all(10.0),
-                            border: UnderlineInputBorder(
-                                borderSide: BorderSide(color: Colors.black12)),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  Padding(
-                      padding: const EdgeInsets.fromLTRB(0.0, 18.0, 0.0, 0.0),
-                      child: Container(
-                        height: 48.0,
-                        width: 160.0,
-                        child: MaterialButton(
-                          child: Text(
-                            'Register',
-                            style:
-                                TextStyle(fontSize: 16.0, color: Colors.white),
-                          ),
-                          color: Colors.blue,
-                          textColor: Colors.white,
-                          onPressed: () => _handleSave(context),
-                        ),
-                      ))
-                ])));
+      appBar: AppBar(
+        title: Text("SIP Account"),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+        children: <Widget>[
+          Center(
+            child: Text(
+              'Register Status: ${EnumHelper.getName(_registerState.state)}',
+              style: TextStyle(fontSize: 18, color: Colors.black54),
+            ),
+          ),
+          SizedBox(height: 20),
+          if (_selectedTransport == TransportType.WS) ...[
+            Text('WebSocket:'),
+            TextFormField(
+              controller: _wsUriController,
+              keyboardType: TextInputType.text,
+              autocorrect: false,
+              textAlign: TextAlign.center,
+            ),
+          ],
+          if (_selectedTransport == TransportType.TCP) ...[
+            Text('Port:'),
+            TextFormField(
+              controller: _portController,
+              keyboardType: TextInputType.text,
+              textAlign: TextAlign.center,
+            ),
+          ],
+          SizedBox(height: 20),
+          Text('SIP URI:'),
+          TextFormField(
+            controller: _sipUriController,
+            keyboardType: TextInputType.text,
+            autocorrect: false,
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 20),
+          Text('Authorization User:'),
+          TextFormField(
+            controller: _authorizationUserController,
+            keyboardType: TextInputType.text,
+            autocorrect: false,
+            textAlign: TextAlign.center,
+            decoration: InputDecoration(
+              hintText:
+                  _authorizationUserController.text.isEmpty ? '[Empty]' : null,
+            ),
+          ),
+          SizedBox(height: 20),
+          Text('Password:'),
+          TextFormField(
+            controller: _passwordController,
+            keyboardType: TextInputType.text,
+            autocorrect: false,
+            textAlign: TextAlign.center,
+            decoration: InputDecoration(
+              hintText: _passwordController.text.isEmpty ? '[Empty]' : null,
+            ),
+          ),
+          SizedBox(height: 20),
+          Text('Display Name:'),
+          TextFormField(
+            controller: _displayNameController,
+            keyboardType: TextInputType.text,
+            textAlign: TextAlign.center,
+            decoration: InputDecoration(
+              hintText: _displayNameController.text.isEmpty ? '[Empty]' : null,
+            ),
+          ),
+          const SizedBox(height: 20),
+          if (!kIsWeb) ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                RadioMenuButton<TransportType>(
+                    value: TransportType.TCP,
+                    groupValue: _selectedTransport,
+                    onChanged: ((value) => setState(() {
+                          _selectedTransport = value!;
+                        })),
+                    child: Text("TCP")),
+                RadioMenuButton<TransportType>(
+                    value: TransportType.WS,
+                    groupValue: _selectedTransport,
+                    onChanged: ((value) => setState(() {
+                          _selectedTransport = value!;
+                        })),
+                    child: Text("WS")),
+              ],
+            ),
+          ],
+          const SizedBox(height: 20),
+          ElevatedButton(
+            child: Text('Register'),
+            onPressed: () => _handleSave(context),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
