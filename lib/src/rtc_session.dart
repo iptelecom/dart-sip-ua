@@ -95,9 +95,6 @@ class RTCSession extends EventManager implements Owner {
   String? _to_tag;
   String? get to_tag => _to_tag;
 
-  String? get from_tag => _from_tag;
-  String? get to_tag => _to_tag;
-
   // The RTCPeerConnection instance (public attribute).
   RTCPeerConnection? _connection;
 
