@@ -25,7 +25,10 @@ dependencies:
     path: ../
   shared_preferences: ^2.2.0
   permission_handler: ^11.1.0
-  flutter_webrtc: ^0.10.4
+  flutter_webrtc:
+    git:
+      url: https://github.com/iptelecom/flutter-webrtc.git
+      ref: 5374012b920975a8d89e31d6292026fc1c853f5d
 
 dev_dependencies:
   flutter_test:
