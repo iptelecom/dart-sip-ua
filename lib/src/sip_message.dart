@@ -546,9 +546,11 @@ class IncomingRequest extends IncomingMessage {
     // Validate code and reason values.
     if (code < 100 || code > 699) {
       throw Exceptions.TypeError('Invalid status_code: $code');
-    } else if (reason != null) {
-      throw Exceptions.TypeError('Invalid reason_phrase: $reason');
     }
+    /// Reason Phrase can be anything
+    //else if (reason != null) {
+      // throw Exceptions.TypeError('Invalid reason_phrase: $reason');
+    // }
 
     reason = reason ?? DartSIP_C.REASON_PHRASE[code] ?? '';
     if (extraHeaders != null) extraHeaders = utils.cloneArray(extraHeaders);
@@ -656,9 +658,11 @@ class IncomingRequest extends IncomingMessage {
     // Validate code and reason values.
     if (code == null || (code < 100 || code > 699)) {
       throw Exceptions.TypeError('Invalid status_code: $code');
-    } else if (reason != null) {
-      throw Exceptions.TypeError('Invalid reason_phrase: $reason');
     }
+    /// Reason Phrase can be anything
+    //else if (reason != null) {
+      // throw Exceptions.TypeError('Invalid reason_phrase: $reason');
+    // }
 
     reason = reason ?? DartSIP_C.REASON_PHRASE[code] ?? '';
 
